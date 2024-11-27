@@ -300,8 +300,13 @@ func (st *StateTransition) buyGas() error {
 	st.gasRemaining += st.msg.GasLimit
 
 	st.initialGas = st.msg.GasLimit
-	mgvalU256, _ := uint256.FromBig(mgval)
-	st.state.SubBalance(st.msg.From, mgvalU256)
+
+	// Medoo: Disable subtract transaction fee
+
+	// mgvalU256, _ := uint256.FromBig(mgval)
+	// st.state.SubBalance(st.msg.From, mgvalU256)   // Sub balance here
+
+	// EndMedoo
 
 	// Arbitrum: record fee payment
 	if tracer := st.evm.Config.Tracer; tracer != nil {
@@ -352,12 +357,16 @@ func (st *StateTransition) preCheck() error {
 				return fmt.Errorf("%w: address %v, maxPriorityFeePerGas: %s, maxFeePerGas: %s", ErrTipAboveFeeCap,
 					msg.From.Hex(), msg.GasTipCap, msg.GasFeeCap)
 			}
-			// This will panic if baseFee is nil, but basefee presence is verified
-			// as part of header validation.
-			if msg.GasFeeCap.Cmp(st.evm.Context.BaseFee) < 0 {
-				return fmt.Errorf("%w: address %v, maxFeePerGas: %s, baseFee: %s", ErrFeeCapTooLow,
-					msg.From.Hex(), msg.GasFeeCap, st.evm.Context.BaseFee)
-			}
+
+			// Medoo: Disable zero base fee check
+			// // This will panic if baseFee is nil, but basefee presence is verified
+			// // as part of header validation.
+			// if msg.GasFeeCap.Cmp(st.evm.Context.BaseFee) < 0 {
+			// 	return fmt.Errorf("%w: address %v, maxFeePerGas: %s, baseFee: %s", ErrFeeCapTooLow,
+			// 		msg.From.Hex(), msg.GasFeeCap, st.evm.Context.BaseFee)
+			// }
+
+			// EndMedoo
 		}
 	}
 	// Check the blob version validity
@@ -568,7 +577,10 @@ func (st *StateTransition) refundGas(refundQuotient uint64) uint64 {
 	// Return ETH for remaining gas, exchanged at the original rate.
 	remaining := uint256.NewInt(st.gasRemaining)
 	remaining = remaining.Mul(remaining, uint256.MustFromBig(st.msg.GasPrice))
-	st.state.AddBalance(st.msg.From, remaining)
+
+	// Medoo: Disable refund excedd transaction fee
+	// st.state.AddBalance(st.msg.From, remaining) 
+	// EndMedoo
 
 	// Arbitrum: record the gas refund
 	if tracer := st.evm.Config.Tracer; tracer != nil {
