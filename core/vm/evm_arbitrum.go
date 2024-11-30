@@ -38,6 +38,7 @@ func (evm *EVM) DecrementDepth() {
 }
 
 type TxProcessingHook interface {
+	PreCheckFreeTransaction(from, to common.Address) uint64 // MedooTodo
 	StartTxHook() (bool, uint64, error, []byte) // return 4-tuple rather than *struct to avoid an import cycle
 	GasChargingHook(gasRemaining *uint64) (common.Address, error)
 	PushContract(contract *Contract)
@@ -57,6 +58,11 @@ type TxProcessingHook interface {
 
 type DefaultTxProcessor struct {
 	evm *EVM
+}
+
+// MedooTodo
+func (p DefaultTxProcessor) PreCheckFreeTransaction (from, to common.Address) uint64 {
+	return 0
 }
 
 func (p DefaultTxProcessor) StartTxHook() (bool, uint64, error, []byte) {

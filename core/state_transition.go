@@ -130,6 +130,14 @@ func toWordSize(size uint64) uint64 {
 	return (size + 31) / 32
 }
 
+type FeeMode int
+
+const (
+	Normal     FeeMode = iota // iota = 0
+	FreeByFrom                // iota = 1
+	FreeByTo                  // iota = 2\
+)
+
 // A Message contains the data derived from a single transaction that is relevant to state
 // processing.
 type Message struct {
@@ -157,6 +165,8 @@ type Message struct {
 	// L1 charging is disabled when SkipL1Charging is true.
 	// This field might be set to true for operations like RPC eth_call.
 	SkipL1Charging bool
+
+	feeMode FeeMode // Medoo: fee mode of transaction
 }
 
 type MessageRunMode uint8
@@ -192,6 +202,7 @@ func TransactionToMessage(tx *types.Transaction, s types.Signer, baseFee *big.In
 		SkipAccountChecks: tx.SkipAccountChecks(), // TODO Arbitrum upstream this was init'd to false
 		BlobHashes:        tx.BlobHashes(),
 		BlobGasFeeCap:     tx.BlobGasFeeCap(),
+		feeMode:           Normal, // Default feeMode is Normal
 	}
 	// If baseFee provided, set gasPrice to effectiveGasPrice.
 	if baseFee != nil {
@@ -199,6 +210,14 @@ func TransactionToMessage(tx *types.Transaction, s types.Signer, baseFee *big.In
 	}
 	var err error
 	msg.From, err = types.Sender(s, tx)
+
+	// MedooTodo: Add custom fee mode
+	if err == nil {
+		if msg.From == common.HexToAddress("0x13B83c3f594f495E111a7c93AFEe537b6B43E282") {
+			msg.feeMode = FreeByFrom
+		}
+	}
+
 	return msg, err
 }
 
@@ -302,9 +321,10 @@ func (st *StateTransition) buyGas() error {
 	st.initialGas = st.msg.GasLimit
 
 	// Medoo: Disable subtract transaction fee
-
-	// mgvalU256, _ := uint256.FromBig(mgval)
-	// st.state.SubBalance(st.msg.From, mgvalU256)   // Sub balance here
+	if st.msg.feeMode == Normal {
+		mgvalU256, _ := uint256.FromBig(mgval)
+		st.state.SubBalance(st.msg.From, mgvalU256) // Sub balance here
+	}
 
 	// EndMedoo
 
@@ -359,12 +379,14 @@ func (st *StateTransition) preCheck() error {
 			}
 
 			// Medoo: Disable zero base fee check
-			// // This will panic if baseFee is nil, but basefee presence is verified
-			// // as part of header validation.
-			// if msg.GasFeeCap.Cmp(st.evm.Context.BaseFee) < 0 {
-			// 	return fmt.Errorf("%w: address %v, maxFeePerGas: %s, baseFee: %s", ErrFeeCapTooLow,
-			// 		msg.From.Hex(), msg.GasFeeCap, st.evm.Context.BaseFee)
-			// }
+			if st.msg.feeMode == Normal {
+				// This will panic if baseFee is nil, but basefee presence is verified
+				// as part of header validation.
+				if msg.GasFeeCap.Cmp(st.evm.Context.BaseFee) < 0 {
+					return fmt.Errorf("%w: address %v, maxFeePerGas: %s, baseFee: %s", ErrFeeCapTooLow,
+						msg.From.Hex(), msg.GasFeeCap, st.evm.Context.BaseFee)
+				}
+			}
 
 			// EndMedoo
 		}
@@ -424,6 +446,9 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 			ScheduledTxes: st.evm.ProcessingHook.ScheduledTxes(),
 		}, nil
 	}
+
+	// MedooTodo
+	_ = st.evm.ProcessingHook.PreCheckFreeTransaction(st.msg.From, *st.msg.To)
 
 	// First check this message satisfies all consensus rules before
 	// applying the message. The rules include these clauses
@@ -579,7 +604,9 @@ func (st *StateTransition) refundGas(refundQuotient uint64) uint64 {
 	remaining = remaining.Mul(remaining, uint256.MustFromBig(st.msg.GasPrice))
 
 	// Medoo: Disable refund excedd transaction fee
-	// st.state.AddBalance(st.msg.From, remaining) 
+	if st.msg.feeMode == Normal {
+		st.state.AddBalance(st.msg.From, remaining)
+	}
 	// EndMedoo
 
 	// Arbitrum: record the gas refund
